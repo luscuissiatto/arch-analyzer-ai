@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<coverage generated="1779472279">
-  <project timestamp="1779472279" name="Clover Coverage">
+<coverage generated="1779480102">
+  <project timestamp="1779480102" name="Clover Coverage">
     <package name="App\Console\Commands">
       <file name="/app/app/Console/Commands/ConsumeReports.php">
         <class name="App\Console\Commands\ConsumeReports" namespace="App\Console\Commands">
