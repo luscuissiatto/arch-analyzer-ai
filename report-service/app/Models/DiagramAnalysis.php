@@ -9,10 +9,10 @@ class DiagramAnalysis extends Model
     protected $table = 'diagram_analyses';
 
     protected $fillable = [
-        'file_path', 
-        'status', 
-        'components', 
-        'risks', 
+        'file_path',
+        'status',
+        'components',
+        'risks',
         'recommendations'
     ];
 }
