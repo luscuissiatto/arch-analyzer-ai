@@ -9,6 +9,12 @@ on:
 jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
+
+    services:
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
     
     permissions:
       contents: read
