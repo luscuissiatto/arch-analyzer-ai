@@ -10,7 +10,6 @@ jobs:
   build-test-deploy:
     runs-on: ubuntu-latest
     
-    # Define permissões necessárias para empurrar imagens para o GHCR
     permissions:
       contents: read
       packages: write
@@ -58,17 +57,17 @@ jobs:
 
       - name: Execute Tests via PHPUnit
         working-directory: ./${{ matrix.service }}
-        run: php artisan test
+        run: |
+          mkdir -p tests/Unit tests/Feature
+          php artisan test
 
       # --- ETAPA 2: DEPLOY (GHCR) ---
       - name: Log in to GitHub Container Registry
-        # Só executa o deploy se estiver fazendo push direto na branch principal
         if: github.event_name == 'push'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          # GITHUB_TOKEN é injetado automaticamente pelo próprio GitHub, não precisa configurar nada
           password: ${{ secrets.GITHUB_TOKEN }} 
 
       - name: Build and Push Docker Image
