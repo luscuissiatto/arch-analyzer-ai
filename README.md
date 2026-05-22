@@ -1,62 +1,121 @@
-# FIAP Secure Systems - Análise Automática de Arquitetura com IA
+# FIAP Secure Systems - Plataforma de Análise Automática de Arquitetura com IA
 
-MVP desenvolvido para automatizar a análise de diagramas de arquitetura de software, fornecendo identificação de componentes, riscos e recomendações arquiteturais através do uso de Inteligência Artificial e Arquitetura de Microsserviços.
+Plataforma desenvolvida para automatizar a análise de diagramas de arquitetura de software, fornecendo identificação de componentes, riscos e recomendações arquiteturais através do uso avançado de Inteligência Artificial integrada a uma Arquitetura de Microsserviços orientada a eventos.
 
-## 1. Descrição do Problema
-Empresas com sistemas distribuídos lidam com dezenas de diagramas arquiteturais armazenados em formatos estáticos (imagens/PDFs). A análise manual desses arquivos em revisões, auditorias e discussões técnicas consome tempo excessivo, depende de especialistas alocados e não escala adequadamente[cite: 4, 5, 10, 11, 12, 13]. Este projeto resolve esse gargalo implementando um pipeline automatizado que ingere o diagrama e gera um relatório estruturado de forma assíncrona.
+## 1. O Problema
+Empresas que operam sistemas distribuídos lidam com dezenas de diagramas arquiteturais armazenados em formatos estáticos, como imagens ou PDFs. A análise manual desses artefatos durante revisões de design, auditorias de segurança e discussões técnicas consome tempo excessivo, depende da disponibilidade de especialistas seniores e, fundamentalmente, não escala. 
 
-## 2. Arquitetura Proposta
-A solução foi desenhada utilizando uma **Arquitetura de Microsserviços** desacoplada[cite: 63], garantindo Bounded Contexts claros, persistência isolada e alta escalabilidade:
+Esta solução resolve esse gargalo implementando um pipeline automatizado que ingere o diagrama e gera um relatório estruturado de forma assíncrona, padronizando a avaliação e acelerando a tomada de decisão técnica.
 
-* **API Gateway / BFF:** Porta de entrada do sistema. Responsável por receber o upload do diagrama, expor o status de processamento e orquestrar a comunicação inicial[cite: 74, 75].
-* **AI Processing Service:** Worker assíncrono isolado. Recebe o artefato, aplica regras de prompt engineering e consome a API do Google Gemini (LLM) para extrair os dados técnicos[cite: 76, 82].
-* **Report Service:** Serviço de domínio exclusivo para consolidar, persistir em um banco de leitura exclusivo e expor os relatórios gerados via endpoints REST[cite: 77].
-* **Message Broker (RabbitMQ):** Espinha dorsal da comunicação assíncrona, orquestrando eventos através das filas `diagram_processing` e `report_queue` para garantir tolerância a falhas[cite: 66].
+## 2. Tecnologias Utilizadas (Stack)
+O sistema foi construído utilizando tecnologias modernas e padrões de mercado para garantir performance e manutenibilidade:
 
-## 3. Fluxo da Solução
-1. O usuário envia um arquivo (Imagem/PDF) via endpoint POST no API Gateway[cite: 24, 51].
-2. O Gateway valida o payload, salva o registro inicial com status "Recebido" e publica um evento na fila do RabbitMQ[cite: 53].
-3. O *AI Processing Service* consome a mensagem, altera o status para "Em processamento" [cite: 54] e envia o artefato ao LLM.
-4. O resultado processado é enviado para uma nova fila, liberando o worker de IA imediatamente[cite: 96, 97].
-5. O *Report Service* consome os dados finais, salva no seu banco isolado e disponibiliza o relatório estruturado para leitura[cite: 27].
-6. O cliente consulta o status ("Analisado" ou "Erro") e consome o relatório completo via GET[cite: 28, 55, 56].
+* **Backend:** PHP 8.4 com Framework Laravel.
+* **Inteligência Artificial:** API do Google Gemini (LLM).
+* **Mensageria (Assíncrono):** RabbitMQ.
+* **Bancos de Dados:** PostgreSQL (Bancos isolados por serviço) e SQLite (Testes CI/CD).
+* **Observabilidade:** Stack LGTM (Loki, Promtail, Grafana).
+* **Qualidade e Testes:** PHPUnit.
+* **DevOps e Infraestrutura:** Docker, Docker Compose e GitHub Actions (CI/CD).
 
-## 4. Segurança, Governança de IA e Limitações
+## 3. Arquitetura Proposta
 
-### 4.1. Tratamento de Entradas Não Confiáveis
-O API Gateway atua como um escudo, validando rigorosamente o `mime_type` e o tamanho do arquivo antes de aceitá-lo[cite: 128]. Arquivos maliciosos ou fora do padrão (imagens e PDFs) são rejeitados na borda, protegendo os workers internos.
+**🔗 [Visualizar Diagrama de Arquitetura Completo (Mermaid)](https://mermaid.ai/view/fc257fb3-f4d3-4a35-b105-e9aa7b42cdd0)**
 
-### 4.2. Uso Controlado da IA (Guardrails)
-Para mitigar alucinações e garantir a previsibilidade do LLM [cite: 83, 130], foi implementado um *Prompt Engineering* estrito no serviço de IA[cite: 84]:
-* **Contexto Fechado:** A IA recebe a persona estrita de "Arquiteto de Software".
-* **Saída Determinística:** Instruções explícitas forçam a IA a devolver o resultado estritamente em formato JSON, com as chaves predefinidas (`componentes`, `riscos`, `recomendacoes`), ignorando blocos Markdown e abstrações desnecessárias.
+A solução foi desenhada utilizando uma **Arquitetura de Microsserviços** desacoplada, garantindo *Bounded Contexts* claros, persistência isolada e alta escalabilidade:
 
-### 4.3. Tratamento de Falhas e Comportamentos Inesperados da IA
-A comunicação com LLMs é inerentemente instável. O sistema implementa o padrão de *Circuit Breaker* adaptado[cite: 94, 131]:
-* Se a IA devolver um JSON malformado que viole a estrutura esperada, o sistema captura a exceção via `json_last_error()` e marca o status como "Erro"[cite: 56], evitando corromper o banco de relatórios.
-* Se a API do LLM retornar *503 Service Unavailable* (pico de uso), o worker executa um `sleep(10)` e devolve a mensagem à fila via `nack(true)` para reprocessamento futuro (*requeue*), garantindo tolerância a falhas externas.
+* **API Gateway / BFF:** Porta de entrada do sistema. Responsável por receber o upload do diagrama de forma segura, expor o status de processamento aos clientes e orquestrar a comunicação inicial.
+* **AI Processing Service:** Worker assíncrono isolado. Recebe o artefato da fila, aplica regras de *prompt engineering* restritas e consome o modelo LLM para extrair os dados técnicos da imagem/PDF.
+* **Report Service:** Serviço de domínio exclusivo para consolidar os dados da IA, persistir as informações em um banco de leitura otimizado e expor os relatórios gerados via endpoints REST.
+* **Message Broker (RabbitMQ):** Espinha dorsal da comunicação assíncrona da plataforma, orquestrando eventos através das filas `diagram_processing` e `report_queue` para garantir tolerância a falhas e picos de acesso.
 
-### 4.4. Segurança na Comunicação entre Serviços
-A comunicação sensível de processamento não trafega por HTTP exposto, mas sim através do ambiente fechado e assíncrono do RabbitMQ (AMQP) isolado na rede virtual do Docker.
+## 4. Fluxo de Execução
+1. O usuário envia um arquivo (Imagem/PDF) via endpoint `POST` no API Gateway.
+2. O Gateway valida o payload, salva o registro inicial no banco de orquestração com status "Recebido" e publica um evento na fila do RabbitMQ.
+3. O *AI Processing Service* consome a mensagem instantaneamente, altera o status para "Em processamento" e envia o artefato ao LLM.
+4. O resultado processado e validado é enviado para a fila de consolidação, liberando o worker de IA para novos trabalhos.
+5. O *Report Service* consome os dados finais, salva no seu banco de dados isolado e disponibiliza o relatório estruturado para leitura.
+6. O cliente, de forma assíncrona, consulta o status da operação e consome o relatório completo e estruturado via `GET`.
 
-### 4.5. Riscos e Limitações
-A precisão da IA depende da nitidez e dos padrões visuais do diagrama enviado[cite: 133]. Arquiteturas muito obscuras ou manuscritas possuem maior risco de falha na extração de texto (OCR interno do Gemini). Além disso, a análise atual é estática e baseada em melhores práticas globais, não substituindo o contexto de negócio específico da empresa avaliada[cite: 89].
+## 5. Segurança, Governança de IA e Limitações
 
-## 5. Qualidade e Observabilidade
-O MVP foi construído para nível de produção:
-* **Cobertura de Código:** 100% de cobertura nos testes unitários/funcionais atestada via SonarQube nos três microsserviços[cite: 72, 110].
-* **Observabilidade Centralizada:** Stack LGTM (Loki, Promtail, Grafana) implementada no Docker Compose, capturando todos os *logs estruturados* (`stderr`) dos containers em tempo real[cite: 107].
-* **Métricas de Infraestrutura:** Prometheus acoplado ao cAdvisor monitorando a saúde (CPU, RAM, Rede) de todos os containers[cite: 40].
-* **CI/CD:** Pipeline automatizada no GitHub Actions garantindo linting, testes e cobertura a cada Pull Request[cite: 39, 102].
+A plataforma foi projetada seguindo as premissas de *Security by Design*:
 
-## 6. Instruções de Execução
+### 5.1. Tratamento de Entradas Não Confiáveis
+O API Gateway atua como um escudo, validando rigorosamente o tipo (`mime_type`) e o tamanho do arquivo antes de aceitá-lo. Arquivos maliciosos ou fora dos formatos de imagem/PDF estipulados são rejeitados na borda da aplicação, protegendo os *workers* internos de injeções.
 
-**Pré-requisitos:** Docker e Docker Compose instalados.
-**Chave de IA:** Renomeie o arquivo `.env.example` para `.env` dentro da pasta `ai-processing-service` e preencha a variável `GEMINI_API_KEY` com uma chave válida.
+### 5.2. Uso Controlado da IA (Guardrails)
+Para mitigar alucinações matemáticas ou conceituais e garantir a previsibilidade do LLM, implementou-se um modelo rigoroso de *Prompt Engineering*:
+* **Contexto Fechado:** A IA é forçada a atuar estritamente sob a persona de um "Arquiteto de Software de Segurança".
+* **Saída Determinística:** Instruções explícitas forçam a IA a devolver o resultado estruturado em formato JSON rigoroso, contendo unicamente as chaves `componentes`, `riscos` e `recomendacoes`, ignorando abstrações desnecessárias ou blocos textuais soltos.
 
-1. Clone o repositório.
-2. Na raiz do projeto, suba a infraestrutura completa:
-   ```bash
-   docker-compose up -d --build
-3. O Gateway estará disponível em http://localhost:8000.
-4. Os painéis de observabilidade (Grafana) estarão em http://localhost:3000 (user/pass: admin).
+### 5.3. Tratamento de Falhas e Comportamentos Inesperados da IA
+A comunicação com modelos generativos é inerentemente instável. O sistema é resiliente a essas variações:
+* **Validação de Payload:** Se a IA devolver um JSON malformado que viole a estrutura esperada (alucinação de formato), o sistema captura a exceção imediatamente, rejeita o payload e marca o status como "Erro", evitando corromper o banco de relatórios corporativos.
+* **Circuit Breaker / Requeue:** Se a API do Google Gemini retornar *503 Service Unavailable* devido a picos de tráfego, o *worker* intercepta a falha, executa uma pausa (`sleep`) e devolve a mensagem à fila via `nack` para reprocessamento futuro, evitando perda de dados do cliente.
+
+### 5.4. Segurança na Comunicação Interna
+Nenhuma comunicação de processamento sensível trafega por HTTP exposto na internet. A troca de mensagens entre orquestração, IA e persistência ocorre via AMQP, isolada de forma segura na rede virtual do Docker Compose.
+
+## 6. Qualidade e Observabilidade
+A plataforma entrega os mais altos padrões de engenharia de software corporativa:
+* **Cobertura de Código:** 100% de cobertura nos testes unitários, de integração e de ponta a ponta, atestada nos três microsserviços do ecosistema.
+* **Observabilidade Centralizada:** Stack LGTM implementada nativamente. Todos os logs dos containers são roteados, estruturados e indexados em tempo real no Grafana.
+* **CI/CD Totalmente Automatizado:** Pipeline estruturada no GitHub Actions que garante *linting*, testes automatizados com banco em memória (SQLite) e deploy de artefatos Docker diretamente no GitHub Container Registry (GHCR) a cada iteração na ramificação principal.
+
+---
+
+## 7. Como Executar a Aplicação (Guia de Uso)
+
+O sistema foi empacotado para facilitar o provisionamento de infraestrutura. Todos os serviços, bancos de dados, mensageria e ferramentas de observabilidade sobem com um único comando.
+
+### Pré-requisitos
+* **Docker** e **Docker Compose** instalados na máquina host.
+* **Git** para clonagem do repositório.
+* Uma chave de API válida do **Google Gemini**.
+
+### Passo a Passo
+
+**1. Clone o repositório para a sua máquina local:**
+```bash
+git clone [https://github.com/seu-usuario/fiap-hackaton.git](https://github.com/seu-usuario/fiap-hackaton.git)
+cd fiap-hackaton
+```
+
+**2. Configure a Chave da IA:**
+Acesse o diretório do serviço de IA e configure as variáveis de ambiente:
+```bash
+cd ai-processing-service
+cp .env.example .env
+```
+
+Abra o arquivo `.env` gerado e cole a sua chave da API do Google na variável correspondente:
+```bash
+GEMINI_API_KEY=sua_chave_real_aqui_sem_aspas
+```
+
+(Não é necessário preencher outras variáveis do .env, as portas do banco e fila já estão pré-configuradas para o ambiente Docker).
+
+**3. Suba a Infraestrutura Completa:**
+Volte para a raiz do projeto e inicie os containers:
+```bash
+cd ..
+docker-compose up -d --build
+```
+
+**4. Acompanhe a subida dos serviços:**
+O ambiente provisionará 9 containers: 3 bancos PostgreSQL isolados, RabbitMQ, Gateway, Worker de IA, Worker de Relatório, Loki e Grafana. Aguarde aproximadamente 30 segundos para que todos os serviços inicializem completamente.
+
+### 🔗 Acesso aos Serviços
+
+* **API Gateway (Rotas REST):** Disponível em `http://localhost:8000`
+* **Painel de Logs em Tempo Real (Grafana):** Disponível em `http://localhost:3000`
+    * **Usuário:** `admin`
+    * **Senha:** `admin` *(Pule a criação de nova senha)*
+    * **Como visualizar:** No menu lateral, acesse **Explore**, selecione a fonte **Loki** e rode uma query (ex: `{job="laravel"}`) para visualizar os logs estruturados.
+
+### 🧪 Testando o Fluxo
+
+1.  Utilize uma ferramenta como Insomnia, Postman ou cURL para fazer um **POST** para `http://localhost:8000/api/analyze`, anexando um diagrama válido no corpo da requisição.
+2.  Anote o `id` retornado na resposta (ex: `12345`).
+3.  Faça um **GET** para `http://localhost:8000/api/reports/12345` para visualizar o status mudar de "Em processamento" para "Analisado", revelando o relatório estruturado final gerado pela IA.
