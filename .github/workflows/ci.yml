@@ -1,0 +1,84 @@
+name: CI/CD Pipeline FIAP
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+    
+    # Define permissões necessárias para empurrar imagens para o GHCR
+    permissions:
+      contents: read
+      packages: write
+      
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api-gateway, ai-processing-service, report-service]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # --- ETAPA 1: BUILD & TESTES ---
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, xml, bcmath, pdo_sqlite, zip
+          coverage: pcov
+
+      - name: Copy .env
+        working-directory: ./${{ matrix.service }}
+        run: php -r "file_exists('.env') || copy('.env.example', '.env');"
+
+      - name: Install Dependencies
+        working-directory: ./${{ matrix.service }}
+        run: composer install -q --no-ansi --no-interaction --no-scripts --no-progress --prefer-dist
+
+      - name: Generate Application Key
+        working-directory: ./${{ matrix.service }}
+        run: php artisan key:generate
+
+      - name: Create SQLite Database for Testing
+        working-directory: ./${{ matrix.service }}
+        run: |
+          touch database/database.sqlite
+          sed -i 's/DB_CONNECTION=pgsql/DB_CONNECTION=sqlite/g' .env
+          sed -i 's/DB_DATABASE=.*//g' .env
+          echo 'DB_DATABASE='$(pwd)'/database/database.sqlite' >> .env
+
+      - name: Run Migrations
+        working-directory: ./${{ matrix.service }}
+        run: php artisan migrate --force
+
+      - name: Execute Tests via PHPUnit
+        working-directory: ./${{ matrix.service }}
+        run: php artisan test
+
+      # --- ETAPA 2: DEPLOY (GHCR) ---
+      - name: Log in to GitHub Container Registry
+        # Só executa o deploy se estiver fazendo push direto na branch principal
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          # GITHUB_TOKEN é injetado automaticamente pelo próprio GitHub, não precisa configurar nada
+          password: ${{ secrets.GITHUB_TOKEN }} 
+
+      - name: Build and Push Docker Image
+        if: github.event_name == 'push'
+        working-directory: ./${{ matrix.service }}
+        run: |
+          # Formata o nome da imagem (ex: ghcr.io/lucas/api-gateway)
+          IMAGE_ID=ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}
+          IMAGE_ID=$(echo $IMAGE_ID | tr '[A-Z]' '[a-z]')
+          
+          # Constrói e envia para a nuvem
+          docker build . --tag $IMAGE_ID:latest
+          docker push $IMAGE_ID:latest
