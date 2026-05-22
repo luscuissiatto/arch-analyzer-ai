@@ -63,6 +63,8 @@ jobs:
 
       - name: Execute Tests via PHPUnit
         working-directory: ./${{ matrix.service }}
+        env:
+          RABBITMQ_HOST: 127.0.0.1
         run: |
           mkdir -p tests/Unit tests/Feature
           php artisan test
