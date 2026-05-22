@@ -1,0 +1,2 @@
+CREATE DATABASE gateway_db;
+CREATE DATABASE report_db;

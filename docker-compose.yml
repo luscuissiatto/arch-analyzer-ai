@@ -1,0 +1,131 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: fiap_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+    volumes:
+      - ./postgres-init:/docker-entrypoint-initdb.d
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: fiap_rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: user
+      RABBITMQ_DEFAULT_PASS: password
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: api_gateway
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api-gateway:/app
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    depends_on:
+      - postgres
+      - rabbitmq
+
+  ai-processing-worker:
+    build:
+      context: ./ai-processing-service
+    container_name: ai_processing_worker
+    volumes:
+      - ./ai-processing-service:/app
+    command: php artisan rabbitmq:consume
+    depends_on:
+      - postgres
+      - rabbitmq
+      - api-gateway
+
+  report-api:
+    build:
+      context: ./report-service
+    container_name: report_api
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./report-service:/app
+    command: php artisan serve --host=0.0.0.0 --port=8000
+    depends_on:
+      - postgres
+      - rabbitmq
+
+  report-worker:
+    build:
+      context: ./report-service
+    container_name: report_worker
+    volumes:
+      - ./report-service:/app
+    command: php artisan rabbitmq:consume-reports
+    depends_on:
+      - postgres
+      - rabbitmq
+  
+  sonarqube:
+    image: sonarqube:community
+    container_name: sonarqube
+    ports:
+      - "9000:9000"
+    environment:
+      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: fiap_loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+
+  promtail:
+    image: grafana/promtail:2.9.0
+    container_name: fiap_promtail
+    volumes:
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml
+      - ./api-gateway/storage/logs:/var/log/api-gateway
+      - ./report-service/storage/logs:/var/log/report-service
+      - ./ai-processing-service/storage/logs:/var/log/ai-processing-service
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: fiap_grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - loki
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: fiap_prometheus
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.47.2
+    platform: linux/aarch64
+    container_name: fiap_cadvisor
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "8080:8080"
