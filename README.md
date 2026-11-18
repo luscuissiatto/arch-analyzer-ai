@@ -20,7 +20,17 @@ O sistema foi construído utilizando tecnologias modernas e padrões de mercado 
 
 ## 3. Arquitetura Proposta
 
-**🔗 [Visualizar Diagrama de Arquitetura Completo (Mermaid)](https://mermaid.ai/view/fc257fb3-f4d3-4a35-b105-e9aa7b42cdd0)**
+```mermaid
+flowchart LR
+    cliente([Cliente]) -->|POST /api/upload<br/>GET /api/status/id| GW[API Gateway<br/>Laravel]
+    GW --> GWDB[(PostgreSQL<br/>gateway_db)]
+    GW -- diagram_processing --> AI[AI Processing Service<br/>worker Laravel]
+    AI -->|imagem/PDF + prompt| GEM[(Google Gemini)]
+    AI -- report_queue --> REP[Report Service<br/>Laravel]
+    REP --> REPDB[(PostgreSQL<br/>report_db)]
+    REP -->|POST /api/webhook/status| GW
+    cliente -->|GET /api/reports/id| REP
+```
 
 A solução foi desenhada utilizando uma **Arquitetura de Microsserviços** desacoplada, garantindo *Bounded Contexts* claros, persistência isolada e alta escalabilidade:
 
@@ -59,7 +69,7 @@ Nenhuma comunicação de processamento sensível trafega por HTTP exposto na int
 
 ## 6. Qualidade e Observabilidade
 A plataforma entrega os mais altos padrões de engenharia de software corporativa:
-* **Cobertura de Código:** 100% de cobertura nos testes unitários, de integração e de ponta a ponta, atestada nos três microsserviços do ecosistema.
+* **Testes automatizados:** testes de feature com PHPUnit nos três microsserviços (upload e validação no Gateway, processamento e tratamento de falhas da IA no worker, consulta de relatórios no Report Service), executados a cada push.
 * **Observabilidade Centralizada:** Stack LGTM implementada nativamente. Todos os logs dos containers são roteados, estruturados e indexados em tempo real no Grafana.
 * **CI/CD Totalmente Automatizado:** Pipeline estruturada no GitHub Actions que garante *linting*, testes automatizados com banco em memória (SQLite) e deploy de artefatos Docker diretamente no GitHub Container Registry (GHCR) a cada iteração na ramificação principal.
 
@@ -78,8 +88,8 @@ O sistema foi empacotado para facilitar o provisionamento de infraestrutura. Tod
 
 **1. Clone o repositório para a sua máquina local:**
 ```bash
-git clone [https://github.com/seu-usuario/fiap-hackaton.git](https://github.com/seu-usuario/fiap-hackaton.git)
-cd fiap-hackaton
+git clone https://github.com/luscuissiatto/arch-analyzer-ai.git
+cd arch-analyzer-ai
 ```
 
 **2. Configure a Chave da IA:**
@@ -104,11 +114,13 @@ docker-compose up -d --build
 ```
 
 **4. Acompanhe a subida dos serviços:**
-O ambiente provisionará 9 containers: 3 bancos PostgreSQL isolados, RabbitMQ, Gateway, Worker de IA, Worker de Relatório, Loki e Grafana. Aguarde aproximadamente 30 segundos para que todos os serviços inicializem completamente.
+O ambiente provisiona os containers da aplicação (API Gateway, worker de IA, API e worker de relatórios), o PostgreSQL (com um banco por serviço), o RabbitMQ e a stack de observabilidade (Loki, Promtail, Grafana, Prometheus e cAdvisor), além de um SonarQube local. Aguarde aproximadamente 30 segundos para que todos os serviços inicializem completamente.
 
 ### 🔗 Acesso aos Serviços
 
 * **API Gateway (Rotas REST):** Disponível em `http://localhost:8000`
+* **Report Service (Relatórios):** Disponível em `http://localhost:8001`
+* **Painel do RabbitMQ:** Disponível em `http://localhost:15672`
 * **Painel de Logs em Tempo Real (Grafana):** Disponível em `http://localhost:3000`
     * **Usuário:** `admin`
     * **Senha:** `admin` *(Pule a criação de nova senha)*
@@ -116,6 +128,7 @@ O ambiente provisionará 9 containers: 3 bancos PostgreSQL isolados, RabbitMQ, G
 
 ### 🧪 Testando o Fluxo
 
-1.  Utilize uma ferramenta como Insomnia, Postman ou cURL para fazer um **POST** para `http://localhost:8000/api/analyze`, anexando um diagrama válido no corpo da requisição.
+1.  Utilize uma ferramenta como Insomnia, Postman ou cURL para fazer um **POST** para `http://localhost:8000/api/upload`, enviando o diagrama (JPG, PNG ou PDF, até 10 MB) como arquivo no campo `diagram` (multipart/form-data).
 2.  Anote o `id` retornado na resposta (ex: `12345`).
-3.  Faça um **GET** para `http://localhost:8000/api/reports/12345` para visualizar o status mudar de "Em processamento" para "Analisado", revelando o relatório estruturado final gerado pela IA.
+3.  Acompanhe o processamento com um **GET** em `http://localhost:8000/api/status/12345`: o status muda de "Recebido" para "Em processamento" e depois para "Analisado".
+4.  Consulte o relatório estruturado gerado pela IA com um **GET** em `http://localhost:8001/api/reports/12345`.
